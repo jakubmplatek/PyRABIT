@@ -10,6 +10,7 @@ Supported services:
  - CIjobHistory: `autorabit.cijobs.history`
  - PollCIJobStatus: `autorabit.cijobs.poll`
  - TriggerBuild: `autorabit.cijobs.trigger`
+ - TriggerQuickDeploy: `autorabit.cijobs.quick_deploy`
  - UpdatBaseLineRevision: `autorabit.cijobs.update`
 
 Detailed lists of required parameters and function behaviour available in docstrings

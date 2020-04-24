@@ -10,6 +10,7 @@ and use the code below
 Available service functions:
     - cijobs.history
     - cijobs.poll
+    - cijobs.quick_deploy
     - cijobs.trigger
     - cijobs.update
 
@@ -21,10 +22,11 @@ https://documenter.getpostman.com/view/7212585/SVtYQmEg?version=latest
 import requests
 
 __author__ = 'Jakub Platek <jakub.p@autorabit.com>'
-__version__ = '1.0.0'
+__version__ = '1.1.2'
 
 # constants
 STATUS_OK = ['Inprogress', 'Completed', 'Success']
+
 
 def init(endpoint='http://localhost', token=None, **kwargs):
     """
@@ -50,11 +52,12 @@ def init(endpoint='http://localhost', token=None, **kwargs):
     global cijobs
     cijobs = CIJobService()
 
+
 class CIJobService:
-    """
-    Handler for the cijobs service implementation v1
-    """
     def __init__(self):
+        """
+        Handler for the cijobs service implementation v1
+        """
         self._url = f'{_endpoint}/api/cijobs/v1'
         self._headers = {
             'token': _token,
@@ -68,13 +71,18 @@ class CIJobService:
         Service to trigger a build of a pre-configured CI Job
 
         Parameters:
-            projectName (str): name of the CI Job to be called
-            title (str): build label for the triggered build (default automated-build)
+            projectName (str):
+                name of the CI Job to be called
+            title (str):
+                build label for the triggered build (default automated-build)
 
         Raises:
-            RabitError: if required parameter is missing or
-            RabitStatusError: if a failing status is returned by AutoRABIT
-            HTTPError: if HTTP request fails (status other then 20X)
+            RabitError:
+                required parameter is missing
+            RabitStatusError:
+                a failing status is returned by AutoRABIT
+            RabitConnectError:
+                HTTPError was raised due to HTTP request failing (status other then 20X)
 
         Returns:
             dict: JSON-formatted body of the HTTP response
@@ -89,17 +97,23 @@ class CIJobService:
             'title': title
         }
         # call service
-        response = requests.post(
-            endpoint,
-            headers=self._headers,
-            json=data
-        )
+        try:
+            response = requests.post(
+                endpoint,
+                headers=self._headers,
+                json=data
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot trigger job', exc=e) from e
         # parse response
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
         res_body = response.json()
         status = res_body['status']
         if not status in STATUS_OK:
-            raise RabitStatusError(status)
+            raise RabitStatusError(res_body)
         # if no exceptions were thrown, return response JSON
         return res_body
     # end of trigger service
@@ -109,12 +123,16 @@ class CIJobService:
         Service to poll the results of a CI Job build
 
         Parameters:
-            projectName (str): name of the CI Job to be queried
-            buildNumber (int): build number to be polled; if not provided, latest build status will be returned
+            projectName (str):
+                name of the CI Job to be queried
+            buildNumber (int):
+                build number to be polled; if not provided, latest build status will be returned
 
         Raises:
-            RabitError: if required parameter is missing or
-            HTTPError: if HTTP request fails (status other then 20X)
+            RabitError: 
+                required parameter is missing
+            RabitConnectError:
+                HTTPError was raised due to HTTP request failing (status other then 20X)
 
         Returns:
             dict: JSON-formatted body of the HTTP response
@@ -125,11 +143,18 @@ class CIJobService:
         if buildNumber is not None:
             endpoint += f'/{buildNumber}'
         # call service
-        response = requests.get(
-            endpoint, 
-            headers=self._headers
-        )
-        response.raise_for_status()
+        try:
+            response = requests.get(
+                endpoint,
+                headers=self._headers
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot poll job', exc=e) from e
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
+        # if no exceptions were thrown, return response JSON
         return response.json()
     # end of poll service
 
@@ -138,15 +163,22 @@ class CIJobService:
         Service to get the history of specified range of builds of a given CI Job
 
         Parameters:
-            projectName (str): name of the CI Job to be queried
-            build_from (int): first build number to include in the query
-            build_to (int): last build number to include in the query
-            buildNumber (int): if provided, will override build_to and build_from, and request data for a single build
+            projectName (str): 
+                name of the CI Job to be queried
+            build_from (int): 
+                first build number to include in the query
+            build_to (int): 
+                last build number to include in the query
+            buildNumber (int): 
+                if provided, will override build_to and build_from, and request data for a single build
 
         Raises:
-            RabitError: if required parameter is missing or
-            RabitStatusError: if an unexpected response is received from AutoRABIT
-            HTTPError: if HTTP request fails (status other then 20X)
+            RabitError: 
+                required parameter is missing
+            RabitStatusError: 
+                an unexpected response is received from AutoRABIT
+            RabitConnectError 
+                HTTPError was raised due to HTTP request failing (status other then 20X)
 
         Returns:
             list: ciJobHistoryList element of the HTTP response body; list of dicts detailing all requested builds
@@ -163,12 +195,19 @@ class CIJobService:
             'to': build_to
         }
         # call service
-        response = requests.get(
-            endpoint,
-            headers=self._headers,
-            params=parameters
-        )
-        response.raise_for_status()
+        try:
+            response = requests.get(
+                endpoint,
+                headers=self._headers,
+                params=parameters
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot obtain history', exc=e) from e
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
+        # if no exceptions were thrown, return response JSON
         result = response.json()
         if 'ciJobHistoryList' in result:
             result = result['ciJobHistoryList']
@@ -184,13 +223,19 @@ class CIJobService:
         If the requested revision is aready set as baseline on the given CI Job, a RabitError exception is raised
 
         Parameters:
-            projectName (str): name of the CI Job to be updated
-            revision (str): new baseline revision to be set on a given CI Job
+            projectName (str): 
+                name of the CI Job to be updated
+            revision (str): 
+                new baseline revision to be set on a given CI Job
+                note api v1 supports the revisions of up to 10 characters only
 
         Raises:
-            RabitError: if required parameter is missing or
-            RabitStatusError: if a failing status is returned by AutoRABIT
-            HTTPError: if HTTP request fails (status other then 20X)
+            RabitError: 
+                required parameter is missing
+            RabitStatusError: 
+                a failing status is returned by AutoRABIT
+            RabitConnectError:
+                HTTPError was raised due to HTTP request failing (status other then 20X)
 
         Returns:
             dict: JSON-formatted body of the HTTP response
@@ -203,31 +248,105 @@ class CIJobService:
         endpoint = f'{self._url}/update/baselinerevision'
         data = {
             'projectName': projectName,
-            'baseLineRevision': revision
+            'baseLineRevision': revision[0:10]
         }
         # call service
-        response = requests.post(
-            endpoint,
-            headers=self._headers,
-            json=data
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                endpoint,
+                headers=self._headers,
+                json=data
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot perform update', exc=e) from e
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
+        # if no exceptions were thrown, return response JSON
         res_body = response.json()
         status = res_body['status']
         if 'Success' != status:
             # TODO: parse if the response indicates the revision was already set
-            raise RabitStatusError(status)
+            raise RabitStatusError(res_body)
         return response.json()
     # end of update function
+
+    def quick_deploy(self, projectName=None, buildNumber=None):
+        """
+        Service to trigger Quick Deploy on a previously validated CI Job build
+
+        Parameters:
+            projectName (str): 
+                name of the CI Job
+            buildNumber (str): 
+                build number for which the Quick Deploy is to be initiated
+                if not provided, last available build will be used
+
+        Raises:
+            RabitError: 
+                required parameter is missing
+            RabitStatusError: 
+                a failing status is returned by AutoRABIT
+            RabitConnectError: 
+                HTTPError was raised due to HTTP request failing (status other then 20X)
+
+        Returns:
+            dict: JSON-formatted body of the HTTP response
+        """
+        if projectName is None:
+            raise RabitError('Please provide a valid AutoRABIT Project')
+        # build request data
+        endpoint = f'{self._url}/triggerquickdeploy/{projectName}'
+        if buildNumber is not None:
+            endpoint += f'/{buildNumber}'
+        # call service
+        try:
+            response = requests.post(
+                endpoint,
+                headers=self._headers
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot trigger job', exc=e) from e
+        # parse response
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
+        res_body = response.json()
+        status = res_body['status']
+        if not status.startswith('Quick deploy initiated successfully'):
+            raise RabitStatusError(status)
+        # if no exceptions were thrown, return response JSON
+        return res_body
+
 # end of CIJobService class
 
 class RabitError(Exception):
     """
     Custom AutoRABIT exception type to help with exception handling
+
+    When exception is raised from another exception,
+    the original exception can be passed as an optional parameter `exc`
     """
-    pass
+    def __init__(self, *args, **kwargs):
+        original_exception = kwargs.pop('exc', None)
+        msg = args[0] if 0 < len(args) else ''
+        if original_exception is not None:
+            msg += f' [{original_exception}]'
+        super().__init__(msg)
+# end of RabitError class
+
 class RabitStatusError(RabitError):
     """
     Custom AutoRABIT exception type to help with exception handling
     """
     pass
+# end of RabitStatusError class
+
+class RabitConnectError(RabitError):
+    """
+    Custom AutoRABIT exception type to help with exception handling for HTTP issues
+    """
+    pass
+# end of RabitConnectError class

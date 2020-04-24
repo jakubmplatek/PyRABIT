@@ -27,6 +27,16 @@ while 'Inprogress' == response['status']:
     response = ci.poll(projectName=job, buildNumber=build_num)
 print(f'{job}_{build_num}: {response["status"]}')
 
+# trigger a quick deploy on a successful validation job
+# the job must be a validate-only,
+# running the required minimum of unit tests to cover the payload
+# and be successful; there cannot be any deployments in the org after the validation
+# as that would invalidate the quick deploy option
+response = ci.quick_deploy(projectName=job)
+# optionally, a specific build number can be used:
+#response = ci.quick_deploy(projectName=job, buildNumber=<your intended build number>)
+print(f'{job}: {response}')
+
 # update baseline revision
 revision = '1234567'
 update_response = ci.update(projectName=job, revision=revision)
