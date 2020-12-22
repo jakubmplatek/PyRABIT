@@ -13,19 +13,25 @@ Available service functions:
     - cijobs.quick_deploy
     - cijobs.trigger
     - cijobs.update
+    - cijobs.rollback
+    - cijobs.rollback_details
+    - cijobs.rollback_history
 
 
-Full documentation of the API:
-
-https://documenter.getpostman.com/view/7212585/SVtYQmEg?version=latest
+Full documentation of the AutoRABIT API can be found in the Knowledge Base:
+https://knowledgebase.autorabit.com/docs/get-allcijoblist
 """
 import requests
 
-__author__ = 'Jakub Platek <jakub.p@autorabit.com>'
-__version__ = '1.1.2'
+__author__ = 'Jakub Platek'
+__version__ = '1.2.0'
+__maintainer__ = 'Jakub Platek'
+__email__ = 'jakub.p@autorabit.com'
 
 # constants
-STATUS_OK = ['Inprogress', 'Completed', 'Success']
+STATUS_INPROGRESS = 'Inprogress'
+STATUS_COMPLETE = ['Completed', 'Success', 'Successful']
+STATUS_OK = ['Inprogress', 'Completed', 'Success', 'Successful']
 
 
 def init(endpoint='http://localhost', token=None, **kwargs):
@@ -51,7 +57,7 @@ def init(endpoint='http://localhost', token=None, **kwargs):
     # init global service handlers
     global cijobs
     cijobs = CIJobService()
-
+# END init
 
 class CIJobService:
     def __init__(self):
@@ -64,7 +70,7 @@ class CIJobService:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
-    # end of constructor
+    # END constructor
 
     def trigger(self, projectName=None, title='automated-build', **kwargs):
         """
@@ -116,7 +122,7 @@ class CIJobService:
             raise RabitStatusError(res_body)
         # if no exceptions were thrown, return response JSON
         return res_body
-    # end of trigger service
+    # END trigger function
 
     def poll(self, projectName=None, buildNumber=None, **kwargs):
         """
@@ -156,7 +162,7 @@ class CIJobService:
             raise RabitStatusError(response)
         # if no exceptions were thrown, return response JSON
         return response.json()
-    # end of poll service
+    # END poll function
 
     def history(self, projectName=None, build_from=-1, build_to=-1, **kwargs):
         """
@@ -214,7 +220,7 @@ class CIJobService:
         else:
             raise RabitStatusError(result)
         return result
-    # end of history function
+    # END history function
 
     def update(self, projectName=None, revision=None):
         """
@@ -270,7 +276,7 @@ class CIJobService:
             # TODO: parse if the response indicates the revision was already set
             raise RabitStatusError(res_body)
         return response.json()
-    # end of update function
+    # END update function
 
     def quick_deploy(self, projectName=None, buildNumber=None):
         """
@@ -319,8 +325,161 @@ class CIJobService:
             raise RabitStatusError(status)
         # if no exceptions were thrown, return response JSON
         return res_body
+    # END quick_deploy function
 
-# end of CIJobService class
+    def rollback(self, projectName=None, buildNumber=None, **kwargs):
+        """
+        Service to trigger a rollback on a given CI Job build
+
+        Parameters:
+            projectName (str): 
+                name of the CI Job to be queried
+            buildNumber (int): optional
+                if not provided, latest available build will be used
+            validateDeployment (bool): default False
+                if true, rollback will run in validate-only mode
+            testLevel (str): optional
+                if not provided, salesforce default level will be used 
+                (depends on the type of target org)
+                to run tests dynamically, use RunTestsBasedOnChanges
+            constructiveChanges (dict): optional
+                JSON-formatted package manifest of constructive rollback elements
+            destructiveChangesPost (dict): optional
+                JSON-formatted package manifest of destructive (post) rollback elements
+            destructiveChangesPre (dict): optional
+                JSON-formatted package manifest of destructive (pre) rollback elements
+
+        Raises:
+            RabitError: 
+                required parameter is missing
+            RabitStatusError: 
+                an unexpected response is received from AutoRABIT
+            RabitConnectError 
+                HTTPError was raised due to HTTP request failing (status other then 20X)
+
+        Returns:
+            dict: JSON-formatted body of the HTTP response
+        """
+        if projectName is None:
+            raise RabitError('Please provide a valid AutoRABIT Project')
+        # build request
+        endpoint = f'{self._url}/rollback'
+        data = { 'projectName': projectName }
+        if buildNumber:
+            data.update({'cyclenum': buildNumber})
+        # dump the rest of the kwargs into data and hope for the best
+        data.update(kwargs)
+        # call service
+        try:
+            response = requests.post(
+                endpoint,
+                headers=self._headers,
+                json=data
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot trigger rollback', exc=e) from e
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
+        # if no exceptions were thrown, return response JSON
+        return response.json()
+    # END rollback function
+
+    def rollback_details(self, projectName=None, buildNumber=None):
+        """
+        Service to get the detailed information about the rollback package,
+        including all constructive and destructive elements, 
+        as well as execution status (for the latest iteration only)
+
+        Parameters:
+            projectName (str): 
+                name of the CI Job to be queried
+            buildNumber (int): optional
+                if not provided, latest available build will be used 
+
+        Raises:
+            RabitError: 
+                required parameter is missing
+            RabitStatusError: 
+                an unexpected response is received from AutoRABIT
+            RabitConnectError 
+                HTTPError was raised due to HTTP request failing (status other then 20X)
+
+        Returns:
+            dict: JSON-formatted body of the HTTP response
+        """
+        if projectName is None:
+            raise RabitError('Please provide a valid AutoRABIT Project')
+        # build request
+        endpoint = f'{self._url}/rollback/{projectName}'
+        if buildNumber:
+            endpoint = f'{endpoint}/{buildNumber}'
+        # call service
+        try:
+            response = requests.get(
+                endpoint,
+                headers=self._headers
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot obtain rollback details', exc=e) from e
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
+        # if no exceptions were thrown, return response JSON
+        return response.json()
+    # END rollback_details function
+
+    def rollback_history(self, projectName=None, buildNumber=None):
+        """
+        Service to get the history of rollback iterations for a given CI Job build
+
+        Parameters:
+            projectName (str): 
+                name of the CI Job to be queried
+            buildNumber (int): optional
+                if not provided, latest available build will be used 
+
+        Raises:
+            RabitError: 
+                required parameter is missing
+            RabitStatusError: 
+                an unexpected response is received from AutoRABIT
+            RabitConnectError 
+                HTTPError was raised due to HTTP request failing (status other then 20X)
+
+        Returns: 
+            list: status of all revert iterations for a given build
+                  in the format matching POST rollback response
+        """
+        if projectName is None:
+            raise RabitError('Please provide a valid AutoRABIT Project')
+        # build request
+        endpoint = f'{self._url}/rollback/history/{projectName}'
+        if buildNumber:
+            endpoint = f'{endpoint}/{buildNumber}'
+        # call service
+        try:
+            response = requests.get(
+                endpoint,
+                headers=self._headers
+            )
+        except requests.exceptions.RequestException as e:
+            raise RabitConnectError('Cannot obtain rollback history', exc=e) from e
+        try:
+            response.raise_for_status()
+        except:
+            raise RabitStatusError(response)
+        # if no exceptions were thrown, return response JSON
+        result = response.json()
+        if 'revertDeployments' in result:
+            result = result['revertDeployments']
+        else:
+            raise RabitStatusError(result)
+        return result
+    # END rollback_history function
+# END CIJobService class
 
 class RabitError(Exception):
     """
@@ -335,18 +494,18 @@ class RabitError(Exception):
         if original_exception is not None:
             msg += f' [{original_exception}]'
         super().__init__(msg)
-# end of RabitError class
+# END RabitError class
 
 class RabitStatusError(RabitError):
     """
     Custom AutoRABIT exception type to help with exception handling
     """
     pass
-# end of RabitStatusError class
+# END RabitStatusError class
 
 class RabitConnectError(RabitError):
     """
     Custom AutoRABIT exception type to help with exception handling for HTTP issues
     """
     pass
-# end of RabitConnectError class
+# END RabitConnectError class

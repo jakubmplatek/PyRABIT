@@ -1,7 +1,7 @@
 # PyRABIT
 AutoRABIT API wrapper for Python
 
-current version: `1.0.0`
+current version: `1.2.0`
 
 ### Supported APIs
 
@@ -12,11 +12,14 @@ Supported services:
  - TriggerBuild: `autorabit.cijobs.trigger`
  - TriggerQuickDeploy: `autorabit.cijobs.quick_deploy`
  - UpdatBaseLineRevision: `autorabit.cijobs.update`
+ - TriggerRollback: `autorabit.cijobs.rollback`
+ - RollbackDetails: `autorabit.cijobs.rollback_details`
+ - RollbackHistory: `autorabit.cijobs.rollback_history`
 
 Detailed lists of required parameters and function behaviour available in docstrings
  
 Full AutoRABIT API documentation:
-https://documenter.getpostman.com/view/7212585/SVtYQmEg?version=latest
+https://knowledgebase.autorabit.com/docs/about-autorabit-api
 
 
 ### Usage

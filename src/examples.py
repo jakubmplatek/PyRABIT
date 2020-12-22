@@ -34,8 +34,55 @@ print(f'{job}_{build_num}: {response["status"]}')
 # as that would invalidate the quick deploy option
 response = ci.quick_deploy(projectName=job)
 # optionally, a specific build number can be used:
-#response = ci.quick_deploy(projectName=job, buildNumber=<your intended build number>)
+#response = ci.quick_deploy(projectName=job, buildNumber=build_num)
 print(f'{job}: {response}')
+
+# trigger a rollback validation on a successful deployment
+# the job must be configured with rollback enabled
+# first, check the status
+details = ci.rollback_details(projectName=job)
+# optionally, a specific biuld number can be used
+#details = ci.rollback_details(projectName=job, buildNumber=build_num)
+build_num = details.get('cyclenum', build_num)
+backup_status = details.get('backupStatus', None)
+print(f'backup status for {job}_{build_num}: {backup_status}')
+# print out the manifest
+manifest = {}
+manifest_keys = ['constructiveChanges', 'destructiveChangesPre', 'destructiveChangesPost']
+for key in manifest_keys:
+    if key in details:
+        # optionally, save the manifest into a dict
+        # to override when invoked
+        # elements can be either removed entirely
+        # or moved between pre- and post-destructive
+        manifest.update({key: details[key]})
+        print(f'{key}: {details[key]}')
+# trigger rollback validation using the successful backup
+if backup_status in autorabit.STATUS_OK:
+    response = ci.rollback(
+        projectName=job, buildNumber=build_num,
+        validateDeployment=True, **manifest)
+
+# get iteration id and check the status using poll method
+# replace the rollback status fields with the ci job status fields
+iteration = response.pop('revertId', None)
+rollback_status = response.pop('status', 'Inprogress')
+response.update({
+    'rollbackstatus': rollback_status,
+    'rollbackIternationNumber': iteration
+})
+# poll
+while 'Inprogress' == response['rollbackstatus']:
+    print(f'{job}_{build_num}_{iteration}: Inprogress')
+    time.sleep(2) # wait for 2 seconds
+    response = ci.poll(projectName=job, buildNumber=build_num)
+print(f'{job}_{build_num}_{iteration}: {response["rollbackstatus"]}')
+
+# alternatively, get the history of rollback iterations for a given job
+rollback_history = ci.rollback_history(projectName=job, buildNumber=build_num)
+print(rollback_history) # this will print all iterations
+
+
 
 # update baseline revision
 revision = '1234567'
